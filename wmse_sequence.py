@@ -1,4 +1,5 @@
 import numpy as np
+from collections import OrderedDict
 
 from wmse import *
 
@@ -52,7 +53,7 @@ class _WMSESequentialSegment(WMSESegment):
     
     def __init__(self, segment_length, line_e, line_s):
         if len(line_s.unique()) > 1:
-            raise NotImplemented("The functionality of several entropies in a row yet is not implemented")
+            raise NotImplementedError("The functionality of several entropies in a row yet is not implemented")
         self.length = segment_length
         self.entropy_loss = line_s[0]
         self.line_e = line_e.tolist()
@@ -60,7 +61,7 @@ class _WMSESequentialSegment(WMSESegment):
     def get_set_of_transfer_matrices(self, temperature, num_of_vertices):
         
         get_matrix_hb_on, get_matrix_hb_off, get_matrix_wdw_on, get_matrix_wdw_off = body()
-        Warning('''The edge effects are yet beeing ignored, planned to add them in the future''')
+        raise Warning('''The edge effects are yet beeing ignored, planned to add them in the future''')
         
         matrix_on = [hb_matrix_on if i % 2 == 0 else wdw_matrix_on for i in range(len(self.line_e))]
         matrix_off = [hb_matrix_off if i % 2 == 0 else wdw_matrix_off for i in range(len(self.line_e))]
@@ -131,16 +132,44 @@ class WMSESequencialModel():
                any(line_e != self.energy_values[:, line_n])):
                 line_n_prev = line_n
                 self.layers.append(_WMSESequentialSegment(line_n - line_n_prev,
-                line_e, line_s)
-        
+                                   line_e, line_s))
+
         self.calculator = WMSEBetaWave(self.layers, len(line_e))
+
 
     def get_probabilty_map(self, temperature):
         self.calculator.get_bond_probability_map(temperature)
-        pass
 
-    def get_link_probability(self, temperture):
-        pass
+    def get_link_probability(self, temperature):
+        probability_map = self.get_probabilty_map(temperature)
+
+        results = []
+        for j in np.unique(probability_map):
+            if j is None:
+                continue
+            mask = np.where(self.mark_values == j)
+
+            results.append((j, (probability_map*mask).sum() / mask.sum()))
+
+        return OrderedDict(results)
+
+    def get_condition_temperature(self, bond_strength, bond_mark, t1 = 0.1, t2 = 1.0, t_eps = 0.01):
+        bond_t = lambda t: self.get_link_probability(t)[bond_mark]
+
+        bond1 = bond_t(t1)
+        bond2 = bond_t(t2)
+
+        assert bond1 > bond_strength > bond2, '''Out of range of temperatures [%f, %f]. Try a wider range''' % (t1, t2)
+
+        while bond2 - bond1 > t_eps:
+            t_12 = (t1 + t2)/2
+            bond_12 = bond_t(t_12)
+            if bond_12 > bond_strength:
+                bond1 = bond_12
+                t1 = t_12
+            else:
+                bond2 = bond_12
+                t2 = t_12
 
 model = WMSESequencialModel(WMSESequencialModel.builder(entropy_loss = 3.0)   
                                                     .add_pike(5)
@@ -151,10 +180,3 @@ model = WMSESequencialModel(WMSESequencialModel.builder(entropy_loss = 3.0)
                                                     .add_connection(2, 11, 2, 1.0, 3.0, 2)
                                                     .add_connection(3, 0, 5, 1.0, 3.0, 1))
 
-################################################################
-
-import matplotlib.pyplot as plot
-
-
-plot.imshow(model.entropy_values)
-plot.show()
