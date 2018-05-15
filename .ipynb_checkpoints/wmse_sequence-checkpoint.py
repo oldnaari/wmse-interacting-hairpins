@@ -52,7 +52,7 @@ class WMSESequencialModelBuilder():
 class _WMSESequentialSegment(WMSESegment):
     
     def __init__(self, segment_length, line_e, line_s):
-        if len(np.unique(line_s)) > 1:
+        if len(line_s.unique()) > 1:
             raise NotImplementedError("The functionality of several entropies in a row yet is not implemented")
         self.length = segment_length
         self.entropy_loss = line_s[0]
@@ -61,21 +61,22 @@ class _WMSESequentialSegment(WMSESegment):
     def get_set_of_transfer_matrices(self, temperature, num_of_vertices):
         
         get_matrix_hb_on, get_matrix_hb_off, get_matrix_wdw_on, get_matrix_wdw_off = body()
-        Warning('''The edge effects are yet beeing ignored, planned to add them in the future''')
+        raise Warning('''The edge effects are yet beeing ignored, planned to add them in the future''')
         
-        matrix_on = [get_matrix_hb_on if i % 2 == 0 else get_matrix_wdw_on for i in range(len(self.line_e))]
-        matrix_off = [get_matrix_hb_off if i % 2 == 0 else get_matrix_wdw_off for i in range(len(self.line_e))]
+        matrix_on = [hb_matrix_on if i % 2 == 0 else wdw_matrix_on for i in range(len(self.line_e))]
+        matrix_off = [hb_matrix_off if i % 2 == 0 else wdw_matrix_off for i in range(len(self.line_e))]
        
-        matrix_on = [matrix_on[i](e, temperature) for i, e in enumerate(self.line_e)]
-        matrix_off = [matrix_off[i]() for i, e in enumerate(self.line_e)]
+        matrix_on = [matrix[i](e, temperature) for i, e in enumerate(self.line_e)]
+        matrix_off = [matrix[i]() for i, e in enumerate(self.line_e)]
         
-        matrix = [(m_off, m_on) for m_on, m_off in zip(matrix_on, matrix_off)]
+        matrix = [(m_on, m_off) for m_on, m_off in zip(matrix_on, matrix_off)]
 
         matrices = np.zeros([2]*(num_of_vertices), dtype=object)
+        
         for i in np.ndindex(matrices.shape):
-            m = matrix[0][i[0]]
-            for column_number, column_state in enumerate(i[1:]):
-                m = np.kron(m, matrix[column_number + 1][column_state])
+            m = matrix[i[0]]
+            for j in zip(i[1:]):
+                m = np.kron(m, matrix[j])
             matrices[i] = m
             
         return matrices
@@ -119,46 +120,38 @@ class WMSESequencialModel():
             self.entropy_values[min_limit:max_limit, pike_ind - 1] = entropy
             self.existance_values[min_limit:max_limit, pike_ind - 1] = True
             self.mark_values[min_limit:max_limit, pike_ind - 1] = mark   
+
         self.layers = list()
-
-        # First layer
-        line_s, line_e = self.entropy_values[0, :], self.energy_values[0, :]
+        line_s, line_e = self.entropy_values[:, 0], self.energy_values[:, 0]
         line_n_prev = 0
-
-        # Push a layer if met a change
-        for line_n in range(1, self.entropy_values.shape[0]):
-
-            has_change = (np.any(line_s != self.entropy_values[line_n, :] ) or
-                          np.any(line_e != self.energy_values[line_n, :]))
-
-            if has_change:
+        for line_n in range(self.entropy_values.shape[1] - 1):
+            if line_n - line_n_prev == 1:
+                line_s = self.entropy_values[:, line_n]
+                line_e = self.energy_values[:, line_n]
+            if(any(line_s != self.entropy_values[:, line_n]) or 
+               any(line_e != self.energy_values[:, line_n])):
+                line_n_prev = line_n
                 self.layers.append(_WMSESequentialSegment(line_n - line_n_prev,
                                    line_e, line_s))
-                line_n_prev = line_n
-                line_s = self.entropy_values[line_n, :]
-                line_e = self.energy_values[line_n, :]
-                continue
 
-        # Push the remainder
-        self.layers.append(_WMSESequentialSegment(self.entropy_values.shape[0] - line_n_prev,
-                    line_e, line_s))
         self.calculator = WMSEBetaWave(self.layers, len(line_e))
 
 
     def get_probabilty_map(self, temperature):
-        return self.calculator.get_bond_probability_map(temperature)
+        self.calculator.get_bond_probability_map(temperature)
 
     def get_link_probability(self, temperature):
         probability_map = self.get_probabilty_map(temperature)
 
-        results = {}
-        for j in np.unique(self.mark_values):
+        results = []
+        for j in np.unique(probability_map):
             if j is None:
                 continue
-            mask = (self.mark_values == j)
-            results[j] = (probability_map.transpose()*mask).sum() / mask.sum()
+            mask = np.where(self.mark_values == j)
 
-        return results
+            results.append((j, (probability_map*mask).sum() / mask.sum()))
+
+        return OrderedDict(results)
 
     def get_condition_temperature(self, bond_strength, bond_mark, t1 = 0.1, t2 = 1.0, t_eps = 0.01):
         bond_t = lambda t: self.get_link_probability(t)[bond_mark]
@@ -166,9 +159,9 @@ class WMSESequencialModel():
         bond1 = bond_t(t1)
         bond2 = bond_t(t2)
 
-        assert bond1 > bond_strength > bond2, '''Out of range of temperatures [%f, %f]. Try a wider range (current values = { %f, %f })''' % (t1, t2, bond1, bond2)
+        assert bond1 > bond_strength > bond2, '''Out of range of temperatures [%f, %f]. Try a wider range''' % (t1, t2)
 
-        while t2 - t1 > t_eps:
+        while bond2 - bond1 > t_eps:
             t_12 = (t1 + t2)/2
             bond_12 = bond_t(t_12)
             if bond_12 > bond_strength:
@@ -178,4 +171,12 @@ class WMSESequencialModel():
                 bond2 = bond_12
                 t2 = t_12
 
-        return (t1 + t2)/2
+model = WMSESequencialModel(WMSESequencialModel.builder(entropy_loss = 3.0)   
+                                                    .add_pike(5)
+                                                    .add_pike(15)
+                                                    .add_pike(15)
+                                                    .add_pike(5)
+                                                    .add_connection(1, 0, 5, 1.0, 3.0, 1)
+                                                    .add_connection(2, 11, 2, 1.0, 3.0, 2)
+                                                    .add_connection(3, 0, 5, 1.0, 3.0, 1))
+

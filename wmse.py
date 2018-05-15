@@ -13,8 +13,8 @@ def get_matrix_hb_on_body(energy, temperature):
                      [0, 1]])
 
 def get_matrix_hb_off_body():
-    return np.array([[0,  0],
-                     [1,  1]])
+    return np.array([[0, 0],
+                     [1, 1]])
 
 def get_matrix_wdw_on_body(energy, temperature):
     return get_matrix_hb_on_body(energy, temperature)
@@ -28,8 +28,8 @@ def get_matrix_hb_on_head(energy, temperature):
                      [0, 0]])
 
 def get_matrix_hb_off_head():
-    return np.array([[0,  0],
-                     [0,  1]])
+    return np.array([[0, 0],
+                     [0, 1]])
 
 def get_matrix_wdw_on_head(energy, temperature):
     return get_matrix_hb_on_head(energy, temperature)
@@ -122,9 +122,7 @@ class WMSEBetaWave:
             segments = (segments,)
         self.segments = segments
         self.hairpin_length = sum([x.length for x in segments])
-        self.n_hb_hairpins = n_hairpins
-        self.n_wdw_hairpins = n_hairpins - 1
-        self.n_hairpins = self.n_hb_hairpins + self.n_wdw_hairpins
+        self.n_hairpins = n_hairpins
     
     def get_bond_probability_map(self, temperature):
         state_matrices = [s.get_set_of_transfer_matrices(temperature, self.n_hairpins) for s in self.segments]
@@ -149,6 +147,6 @@ class WMSEBetaWave:
                         state_agg = state_agg.dot(per_line_transfer_matrices[segment_index[i]][line][1])
                     else:
                         state_agg = state_agg.dot(transfer_matrix[segment_index[i]])
-                probability_map[line, row] = np.sum(state_agg)/partition_function
-                
+                probability_map[line, row] = np.sum(state_agg) / partition_function
+        
         return probability_map
