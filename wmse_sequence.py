@@ -51,20 +51,21 @@ class WMSESequencialModelBuilder():
 
 class _WMSESequentialSegment(WMSESegment):
     
-    def __init__(self, segment_length, line_e, line_s):
+    def __init__(self, segment_length, line_e, line_s, list_of_types):
         if len(np.unique(line_s)) > 1:
             raise NotImplementedError("The functionality of several entropies in a row yet is not implemented")
         self.length = segment_length
         self.entropy_loss = line_s[0]
         self.line_e = line_e.tolist()
+        self.list_of_types = list_of_types
 
     def get_set_of_transfer_matrices(self, temperature, num_of_vertices):
         
-        get_matrix_hb_on, get_matrix_hb_off, get_matrix_wdw_on, get_matrix_wdw_off = body()
-        Warning('''The edge effects are yet beeing ignored, planned to add them in the future''')
+        # get_matrix_hb_on, get_matrix_hb_off, get_matrix_wdw_on, get_matrix_wdw_off = body()
+        Warning('''The edge effects are yet beeing ignored, planned to add  them in the future''')
         
-        matrix_on = [get_matrix_hb_on if i % 2 == 0 else get_matrix_wdw_on for i in range(len(self.line_e))]
-        matrix_off = [get_matrix_hb_off if i % 2 == 0 else get_matrix_wdw_off for i in range(len(self.line_e))]
+        matrix_on = [_type()[0] if i % 2 == 0 else _type()[2] for i, _type in enumerate(self.list_of_types)]
+        matrix_off = [_type()[1] if i % 2 == 0 else _type()[3] for i, _type in enumerate(self.list_of_types)]
        
         matrix_on = [matrix_on[i](e, temperature) for i, e in enumerate(self.line_e)]
         matrix_off = [matrix_off[i]() for i, e in enumerate(self.line_e)]
@@ -79,6 +80,8 @@ class _WMSESequentialSegment(WMSESegment):
             matrices[i] = m
             
         return matrices
+
+
         
 class WMSESequencialModel():
 
@@ -94,6 +97,7 @@ class WMSESequencialModel():
         self.entropy_values = np.ones((max_h - min_h, len(builder.pikes) - 2))*builder.default_entropy
         self.existance_values = np.zeros((max_h - min_h, len(builder.pikes) - 2))
         self.mark_values = np.full((max_h - min_h, len(builder.pikes) - 2), None)  
+        self.type_values = np.full((max_h - min_h, len(builder.pikes) - 2), outer, dtype=object)
 
         for i in range(len(builder.pikes) - 2):
             c0, c1, c2 = builder.pikes[i], builder.pikes[i + 1], builder.pikes[i + 2]
@@ -118,30 +122,50 @@ class WMSESequencialModel():
             self.energy_values[min_limit:max_limit, pike_ind - 1] = energy
             self.entropy_values[min_limit:max_limit, pike_ind - 1] = entropy
             self.existance_values[min_limit:max_limit, pike_ind - 1] = True
-            self.mark_values[min_limit:max_limit, pike_ind - 1] = mark   
+            self.mark_values[min_limit:max_limit, pike_ind - 1] = mark
+        
+        for i, j in np.ndindex(self.existance_values.shape):
+            if self.existance_values[i, j]:
+                if i == 0:
+                    self.type_values[i, j] = tail
+                    continue
+                if i == self.existance_values.shape[0] - 1:
+                    self.type_values[i, j] = head
+                    continue
+                if not self.existance_values[i + 1, j]:
+                    self.type_values[i, j] = head
+                if not self.existance_values[i - 1, j]:
+                    self.type_values[i, j] = tail
+
+                self.type_values[i, j] = body
+            # else:
+            #     self.entropy_values[i, j] = 1
+
         self.layers = list()
 
         # First layer
-        line_s, line_e = self.entropy_values[0, :], self.energy_values[0, :]
+        line_s, line_e, line_t = self.entropy_values[0, :], self.energy_values[0, :], self.type_values[0, :]
         line_n_prev = 0
 
         # Push a layer if met a change
         for line_n in range(1, self.entropy_values.shape[0]):
 
             has_change = (np.any(line_s != self.entropy_values[line_n, :] ) or
-                          np.any(line_e != self.energy_values[line_n, :]))
+                          np.any(line_e != self.energy_values[line_n, :]) or
+                          np.any(line_t != self.type_values[line_n, :]))
 
             if has_change:
                 self.layers.append(_WMSESequentialSegment(line_n - line_n_prev,
-                                   line_e, line_s))
+                                   line_e, line_s, line_t))
                 line_n_prev = line_n
                 line_s = self.entropy_values[line_n, :]
                 line_e = self.energy_values[line_n, :]
+                line_t = self.type_values[line_n, :]
                 continue
 
         # Push the remainder
         self.layers.append(_WMSESequentialSegment(self.entropy_values.shape[0] - line_n_prev,
-                    line_e, line_s))
+                    line_e, line_s, line_t))
         self.calculator = WMSEBetaWave(self.layers, len(line_e))
 
 
@@ -179,3 +203,54 @@ class WMSESequencialModel():
                 t2 = t_12
 
         return (t1 + t2)/2
+
+    def visualize(self, temperature, auto_display=True):
+        import matplotlib.pyplot as plot        
+        pm = self.get_probabilty_map(temperature).T
+
+        draw_image = np.ones((pm.shape[0]*3, pm.shape[1]*2 + 1, 3))
+
+        mark_colors = [np.array([0.0, 1.0, 0.0]),
+                       np.array([0.0, 0.5, 1.0]),
+                       np.array([1.0, 0.5, 0.0]),
+                       np.array([1.0, 0.0, 0.0]),
+                       np.array([0.0, 0.0, 1.0]),
+                       np.array([1.0, 1.0, 0.0])]
+
+        color_black = np.array([0.2, 0.2, 0.2])
+        color_white = np.array([1.0, 1.0, 1.0])
+
+        markers = list(np.unique(self.mark_values))
+        for i, j in np.ndindex(self.existance_values.shape):
+            if self.existance_values[i, j]:
+                right_cup = True if (j%2 == 0 and ((i == self.existance_values.shape[0] - 1) or 
+                                                    not self.existance_values[i + 1, j])) else False
+                left_cup = True if (j%2 == 1 and ((i == 0) or not self.existance_values[i - 1, j])) else False 
+
+
+                medium_x = 3*i + 1
+                medium_y = 2*j + 1
+                draw_image[medium_x - 1, medium_y - 1, :] = color_black
+                draw_image[medium_x    , medium_y - 1, :] = color_black
+                draw_image[medium_x + 1, medium_y - 1, :] = color_black
+                draw_image[medium_x - 1, medium_y + 1, :] = color_black
+                draw_image[medium_x    , medium_y + 1, :] = color_black
+                draw_image[medium_x + 1, medium_y + 1, :] = color_black
+
+                if left_cup: draw_image[medium_x - 1, medium_y, :] = color_black
+                if right_cup: draw_image[medium_x + 1, medium_y, :] = color_black
+                
+                mark = self.mark_values[i,j]
+                if mark is None: continue
+                draw_image[medium_x, medium_y, :] = pm[i, j]*mark_colors[markers.index(mark)] + (1.0 - pm[i,j])*color_white
+
+        
+        fig = plot.imshow(draw_image[::-1,:,:])
+        fig.axes.get_xaxis().set_visible(False)
+        fig.axes.get_yaxis().set_visible(False)
+        if auto_display:
+            plot.show()
+        return fig
+
+
+
