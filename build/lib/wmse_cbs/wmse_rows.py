@@ -1,11 +1,15 @@
+"""[summary]
+
+Returns:
+    [type] -- [description]
+"""
+
 import numpy as np
 import matplotlib.pyplot as plot
 
 from IPython.display import display, clear_output
 import ipywidgets as widgets
 from ipywidgets import interact, interactive
-
-from moviepy.editor import VideoClip
 
 # Body 
 def get_matrix_hb_on_body(energy, temperature):

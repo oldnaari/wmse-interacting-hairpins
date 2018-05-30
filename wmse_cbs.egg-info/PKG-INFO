@@ -1,0 +1,35 @@
+Metadata-Version: 1.1
+Name: wmse-cbs
+Version: 0.0.1
+Summary: WMSE Complex Beta Structure
+Home-page: https://github.com/oldnaari/wmse-interacting-hairpins.git
+Author: oldnaari
+Author-email: daniil.hayrapetyan@gmail.com
+License: UNKNOWN
+Description-Content-Type: text/markdown
+Description: #  WMSE Complex Beta Structure
+        
+        This project contains two parts 
+        1. Functionality to calculate $\beta$ structure.
+        2. Notebook examples
+        
+        ## Installation
+        
+        1. Install Anaconda (https://conda.io/docs/user-guide/install/index.html)
+        2. Clone or download this repo
+        3. `cd path\to\directory\here\`
+        4. Write `python setup.py install`
+        
+        **WHEN USING WINDOWS 10** use Anaconda Prompt instead native terminal. 
+        
+        Follow this additional s    teps if you want to install wmse_hairpin_model to libraries.
+        
+        ## View examples
+        
+        1. ``
+        
+        ## 
+Platform: UNKNOWN
+Classifier: Programming Language :: Python :: 2.7
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
